@@ -7,12 +7,34 @@ RAW_DIR = os.path.join(os.path.dirname(__file__), "raw")
 os.makedirs(RAW_DIR, exist_ok=True)
 
 PHISHTANK_URL = "http://data.phishtank.com/data/online-valid.csv"
-URLHAUS_URL = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+URLHAUS_CSV_URL = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+URLHAUS_API_URL = "https://urlhaus-api.abuse.ch/v1/urls/recent/limit/10000/"
 TRANCO_API_URL = "https://tranco-list.eu/api/lists/date/latest"
 MAJESTIC_URL = "https://downloads.majestic.com/majestic_million.csv"
 BENIGN_LIMIT = 5000
 
 HEADERS = {"User-Agent": "malicious-url-detector/1.0 (research)"}
+
+
+def _parse_urlhaus_csv(text):
+    """Parse URLhaus CSV, handling the # comment header block.
+
+    The file uses # for all comment lines including the column header line.
+    We strip the leading '# ' from the header line and drop pure comment lines.
+    Column layout: id,dateadded,url,url_status,last_online,threat,tags,urlhaus_link,reporter
+    We want the 'url' column (index 2), not 'urlhaus_link' (index 7).
+    """
+    lines = []
+    header_found = False
+    for line in text.splitlines():
+        if not header_found and line.startswith("#") and "id,dateadded,url" in line:
+            # Strip leading '# ' to expose the real header
+            lines.append(line.lstrip("# "))
+            header_found = True
+        elif not line.startswith("#"):
+            lines.append(line)
+    df = pd.read_csv(io.StringIO("\n".join(lines)))
+    return df["url"].dropna().drop_duplicates().reset_index(drop=True)
 
 
 def download_phishing():
@@ -24,16 +46,24 @@ def download_phishing():
         urls = df["url"].dropna().drop_duplicates().reset_index(drop=True)
         print(f"  PhishTank: got {len(urls)} URLs")
     except Exception as e:
-        print(f"  PhishTank unavailable ({e}), falling back to URLhaus...")
-        resp = requests.get(URLHAUS_URL, timeout=60, headers=HEADERS)
-        resp.raise_for_status()
-        lines = [l for l in resp.text.splitlines() if not l.startswith("#")]
-        df = pd.read_csv(io.StringIO("\n".join(lines)), header=0)
-        url_col = [c for c in df.columns if "url" in c.lower()]
-        if not url_col:
-            raise ValueError(f"No URL column found in URLhaus data. Columns: {list(df.columns)}")
-        urls = df[url_col[0]].dropna().drop_duplicates().reset_index(drop=True)
-        print(f"  URLhaus: got {len(urls)} URLs")
+        print(f"  PhishTank unavailable ({e}), trying URLhaus CSV feed...")
+        try:
+            resp = requests.get(URLHAUS_CSV_URL, timeout=60, headers=HEADERS)
+            resp.raise_for_status()
+            urls = _parse_urlhaus_csv(resp.text)
+            print(f"  URLhaus CSV: got {len(urls)} real malicious URLs")
+        except Exception as e2:
+            print(f"  URLhaus CSV failed ({e2}), trying URLhaus JSON API...")
+            resp = requests.get(URLHAUS_API_URL, timeout=60, headers=HEADERS)
+            resp.raise_for_status()
+            data = resp.json()
+            urls = (
+                pd.Series([entry["url"] for entry in data.get("urls", [])])
+                .dropna()
+                .drop_duplicates()
+                .reset_index(drop=True)
+            )
+            print(f"  URLhaus API: got {len(urls)} real malicious URLs")
 
     out = os.path.join(RAW_DIR, "phishing_urls.csv")
     urls.to_csv(out, index=False, header=["url"])
@@ -94,3 +124,7 @@ if __name__ == "__main__":
     print(f"  Malicious URLs : {(dataset['label'] == 1).sum()}")
     print(f"  Benign URLs    : {(dataset['label'] == 0).sum()}")
     print(f"  Total          : {len(dataset)}")
+    print("\nSample malicious URLs (verify these are real URLs, not report pages):")
+    samples = dataset[dataset["label"] == 1]["url"].sample(5, random_state=1).tolist()
+    for s in samples:
+        print(f"  {s}")
