@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+scikit-learn
+pandas
+numpy
+requests
+python-whois
+dnspython
+tldextract
+sqlalchemy
+streamlit
+joblib
+python-multipart
