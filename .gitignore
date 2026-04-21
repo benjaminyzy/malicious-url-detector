@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# Data files
+data/raw/*.csv
+data/raw/*.json
+
+# Trained models
+models/*.pkl
+models/*.joblib
+
+# Database
+database/*.db
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
