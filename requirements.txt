@@ -11,3 +11,5 @@ sqlalchemy
 streamlit
 joblib
 python-multipart
+xgboost
+matplotlib
