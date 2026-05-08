@@ -1,3 +1,27 @@
+import re
+
+_BRAND_WORDS = re.compile(
+    r"verify|secure|update|account|login|signin|banking|confirm|password"
+    r"|paypal|amazon|apple|microsoft|google|facebook",
+    re.IGNORECASE,
+)
+_PRIZE_WORDS = re.compile(
+    r"free-prize|free|prize|winner|claim|reward|lucky|congratulations"
+    r"|you-won|click-here|limited-offer",
+    re.IGNORECASE,
+)
+_SHORTENED_PRIZE_WORDS = re.compile(
+    r"free|prize|click|win|reward|offer|lucky|claim",
+    re.IGNORECASE,
+)
+
+
+def _suspicious_domain_pattern(url, f):
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc.split(":")[0]
+    return domain.count("-") >= 2 and bool(_BRAND_WORDS.search(url))
+
+
 RULES = [
     (
         "has_ip_address",
@@ -12,7 +36,7 @@ RULES = [
     (
         "url_too_long",
         lambda url, f: f["url_length"] > 200,
-        f"URL length exceeds 200 characters",
+        "URL length exceeds 200 characters",
     ),
     (
         "has_at_symbol",
@@ -20,9 +44,9 @@ RULES = [
         "URL contains @ symbol (credential injection attempt)",
     ),
     (
-        "shortened_with_suspicious_words",
-        lambda url, f: f["is_shortened"] == 1 and f["has_suspicious_words"] == 1,
-        "URL uses a shortener service and contains suspicious words",
+        "shortened_url",
+        lambda url, f: f["is_shortened"] == 1,
+        "URL uses a known shortener service",
     ),
     (
         "high_digit_ratio",
@@ -33,6 +57,21 @@ RULES = [
         "too_many_subdomains",
         lambda url, f: f["num_subdomains"] > 4,
         f"URL has more than 4 subdomains (count={'{num_subdomains}'})",
+    ),
+    (
+        "suspicious_domain_pattern",
+        _suspicious_domain_pattern,
+        "Domain contains multiple hyphens with a brand/sensitive keyword",
+    ),
+    (
+        "prize_scam_pattern",
+        lambda url, f: bool(_PRIZE_WORDS.search(url)),
+        "URL contains prize-scam keywords (free-prize, winner, claim, etc.)",
+    ),
+    (
+        "shortened_with_prize_words",
+        lambda url, f: f["is_shortened"] == 1 and bool(_SHORTENED_PRIZE_WORDS.search(url)),
+        "URL uses a shortener and contains prize/scam-bait words",
     ),
 ]
 

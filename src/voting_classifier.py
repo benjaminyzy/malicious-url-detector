@@ -11,21 +11,28 @@ from rule_engine import rule_based_classify, get_triggered_rules
 
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
+_model1 = None
+_model2 = None
+_model_names = None
+_feature_names = None
+
 
 def _load_models():
-    def load(name):
-        with open(os.path.join(MODELS_DIR, name), "rb") as f:
+    def load(path):
+        with open(path, "rb") as f:
             return pickle.load(f)
-    return load("logistic_regression.pkl"), load("random_forest.pkl"), load("feature_names.pkl")
 
-
-_lr_model, _rf_model, _feature_names = None, None, None
+    model1       = load(os.path.join(MODELS_DIR, "best_model_1.pkl"))
+    model2       = load(os.path.join(MODELS_DIR, "best_model_2.pkl"))
+    model_names  = load(os.path.join(MODELS_DIR, "best_model_names.pkl"))
+    feature_names = load(os.path.join(MODELS_DIR, "feature_names.pkl"))
+    return model1, model2, model_names, feature_names
 
 
 def _ensure_loaded():
-    global _lr_model, _rf_model, _feature_names
-    if _lr_model is None:
-        _lr_model, _rf_model, _feature_names = _load_models()
+    global _model1, _model2, _model_names, _feature_names
+    if _model1 is None:
+        _model1, _model2, _model_names, _feature_names = _load_models()
 
 
 def classify_url(url):
@@ -34,20 +41,23 @@ def classify_url(url):
     features = extract_features(url)
     feature_vector = pd.DataFrame([{name: features[name] for name in _feature_names}])
 
-    lr_pred = int(_lr_model.predict(feature_vector)[0])
-    rf_pred = int(_rf_model.predict(feature_vector)[0])
+    pred1 = int(_model1.predict(feature_vector)[0])
+    pred2 = int(_model2.predict(feature_vector)[0])
     rule_pred = rule_based_classify(url, features)
     triggered_rules = get_triggered_rules(url, features)
 
-    votes_for_malicious = lr_pred + rf_pred + rule_pred
+    votes_for_malicious = pred1 + pred2 + rule_pred
     final_label = 1 if votes_for_malicious >= 2 else 0
+
+    key1 = _model_names[0].lower().replace(" ", "_") + "_prediction"
+    key2 = _model_names[1].lower().replace(" ", "_") + "_prediction"
 
     return {
         "url": url,
         "final_label": final_label,
         "final_result": "MALICIOUS" if final_label == 1 else "BENIGN",
-        "lr_prediction": lr_pred,
-        "rf_prediction": rf_pred,
+        key1: pred1,
+        key2: pred2,
         "rule_prediction": rule_pred,
         "votes_for_malicious": votes_for_malicious,
         "confidence": round(votes_for_malicious / 3 * 100, 1),
@@ -56,6 +66,9 @@ def classify_url(url):
 
 
 if __name__ == "__main__":
+    _ensure_loaded()
+    print(f"Loaded models: {_model_names[0]} (best_model_1) | {_model_names[1]} (best_model_2)\n")
+
     test_urls = [
         "http://192.168.1.1/login/verify",
         "https://google.com",
@@ -64,11 +77,14 @@ if __name__ == "__main__":
 
     for url in test_urls:
         result = classify_url(url)
-        print(f"\nURL: {result['url']}")
+        key1 = _model_names[0].lower().replace(" ", "_") + "_prediction"
+        key2 = _model_names[1].lower().replace(" ", "_") + "_prediction"
+        print(f"URL: {result['url']}")
         print(f"  Final result      : {result['final_result']} (label={result['final_label']})")
         print(f"  Confidence        : {result['confidence']}%")
         print(f"  Votes (malicious) : {result['votes_for_malicious']}/3")
-        print(f"  LR prediction     : {result['lr_prediction']}")
-        print(f"  RF prediction     : {result['rf_prediction']}")
-        print(f"  Rule prediction   : {result['rule_prediction']}")
+        print(f"  {_model_names[0]:<22}: {result[key1]}")
+        print(f"  {_model_names[1]:<22}: {result[key2]}")
+        print(f"  Rule Engine       : {result['rule_prediction']}")
         print(f"  Triggered rules   : {result['triggered_rules'] or ['none']}")
+        print()
