@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>URL Safety Checker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 380px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #1a1a2e;
+      background: #f8f9fc;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-icon { font-size: 22px; }
+    .header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; }
+    .header p  { font-size: 11px; opacity: 0.65; margin-top: 2px; }
+
+    /* ── URL bar ── */
+    .url-bar {
+      background: #fff;
+      border-bottom: 1px solid #e8eaf0;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .url-label { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; flex-shrink: 0; }
+    .url-text  { font-size: 11px; color: #444; word-break: break-all; }
+
+    /* ── Loading ── */
+    #loading {
+      padding: 32px 16px;
+      text-align: center;
+      color: #888;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error ── */
+    #error {
+      display: none;
+      padding: 20px 16px;
+    }
+    .error-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      color: #b91c1c;
+    }
+    .error-box .error-icon { font-size: 24px; margin-bottom: 8px; }
+    .error-box p { font-size: 12px; line-height: 1.5; }
+    .error-box code { font-size: 11px; background: #fee2e2; padding: 2px 5px; border-radius: 3px; }
+
+    /* ── Result ── */
+    #result { display: none; }
+
+    .badge-section {
+      padding: 20px 16px 16px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      padding: 10px 32px;
+      border-radius: 50px;
+      margin-bottom: 10px;
+    }
+    .badge.safe       { background: #dcfce7; color: #15803d; border: 2px solid #86efac; }
+    .badge.suspicious { background: #fff7ed; color: #c2410c; border: 2px solid #fdba74; }
+    .badge.malicious  { background: #fee2e2; color: #b91c1c; border: 2px solid #fca5a5; }
+
+    .confidence {
+      font-size: 13px;
+      color: #555;
+      margin-top: 4px;
+    }
+    .confidence span { font-weight: 700; font-size: 15px; }
+
+    /* ── Votes ── */
+    .section {
+      background: #fff;
+      border-top: 1px solid #e8eaf0;
+      padding: 12px 16px;
+    }
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+    .votes-grid {
+      display: flex;
+      gap: 8px;
+    }
+    .vote-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      padding: 8px 4px;
+      border-radius: 8px;
+      background: #f8f9fc;
+      border: 1px solid #e8eaf0;
+    }
+    .vote-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+    }
+    .vote-dot.benign   { background: #22c55e; box-shadow: 0 0 0 3px #dcfce7; }
+    .vote-dot.malicious { background: #ef4444; box-shadow: 0 0 0 3px #fee2e2; }
+    .vote-label { font-size: 10px; color: #555; text-align: center; line-height: 1.3; font-weight: 500; }
+    .vote-verdict { font-size: 10px; font-weight: 700; }
+    .vote-verdict.benign   { color: #15803d; }
+    .vote-verdict.malicious { color: #b91c1c; }
+
+    /* ── Rules ── */
+    .rules-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .rules-list li {
+      font-size: 11px;
+      color: #555;
+      padding: 5px 8px;
+      background: #fef9ec;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 4px 4px 0;
+      line-height: 1.4;
+    }
+    .no-rules {
+      font-size: 11px;
+      color: #22c55e;
+      font-weight: 600;
+    }
+
+    /* ── Buttons ── */
+    .actions {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      background: #fff;
+      border-top: 1px solid #e8eaf0;
+    }
+    .btn {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary   { background: #3b82f6; color: #fff; }
+    .btn-secondary { background: #e8eaf0; color: #1a1a2e; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-icon">🛡️</div>
+    <div>
+      <h1>URL Safety Checker</h1>
+      <p>Powered by ML ensemble + rule engine</p>
+    </div>
+  </div>
+
+  <div class="url-bar">
+    <span class="url-label">Checking</span>
+    <span class="url-text" id="url-display">—</span>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Analysing URL…</p>
+  </div>
+
+  <div id="error">
+    <div class="error-box">
+      <div class="error-icon">⚠️</div>
+      <p><strong>Backend unreachable</strong><br><br>
+      Make sure the FastAPI server is running:<br>
+      <code>python -m uvicorn backend.main:app --port 8000</code></p>
+    </div>
+    <div class="actions" style="background:transparent;border:none;padding-top:12px">
+      <button class="btn btn-primary" id="retry-btn">Try Again</button>
+    </div>
+  </div>
+
+  <div id="result">
+    <div class="badge-section">
+      <div class="badge" id="badge">—</div>
+      <div class="confidence">Confidence: <span id="confidence">—</span></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Model Votes</div>
+      <div class="votes-grid">
+        <div class="vote-item">
+          <div class="vote-dot" id="dot-rf"></div>
+          <div class="vote-label">Random<br>Forest</div>
+          <div class="vote-verdict" id="verdict-rf">—</div>
+        </div>
+        <div class="vote-item">
+          <div class="vote-dot" id="dot-xgb"></div>
+          <div class="vote-label">XGBoost</div>
+          <div class="vote-verdict" id="verdict-xgb">—</div>
+        </div>
+        <div class="vote-item">
+          <div class="vote-dot" id="dot-rule"></div>
+          <div class="vote-label">Rule<br>Engine</div>
+          <div class="vote-verdict" id="verdict-rule">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Triggered Rules</div>
+      <div id="rules-container"></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary"   id="recheck-btn">🔄 Check Again</button>
+      <button class="btn btn-secondary" id="dashboard-btn">📊 Open Dashboard</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
