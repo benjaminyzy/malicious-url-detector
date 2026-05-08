@@ -48,6 +48,11 @@ def classify_url(url):
 
     votes_for_malicious = pred1 + pred2 + rule_pred
     final_label = 1 if votes_for_malicious >= 2 else 0
+    if final_label == 1:
+        confidence = round(votes_for_malicious / 3 * 100, 1)
+    else:
+        votes_for_benign = 3 - votes_for_malicious
+        confidence = round(votes_for_benign / 3 * 100, 1)
 
     key1 = _model_names[0].lower().replace(" ", "_") + "_prediction"
     key2 = _model_names[1].lower().replace(" ", "_") + "_prediction"
@@ -60,7 +65,7 @@ def classify_url(url):
         key2: pred2,
         "rule_prediction": rule_pred,
         "votes_for_malicious": votes_for_malicious,
-        "confidence": round(votes_for_malicious / 3 * 100, 1),
+        "confidence": confidence,
         "triggered_rules": triggered_rules,
     }
 

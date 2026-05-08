@@ -1,6 +1,7 @@
 const API = "http://localhost:8000";
 
-let currentUrl = "";
+let currentTabId  = null;
+let currentUrl    = "";
 
 function show(id) {
   ["loading", "error", "result"].forEach((s) => {
@@ -10,33 +11,31 @@ function show(id) {
 
 function setVote(dotId, verdictId, value) {
   const isMalicious = value === 1;
-  const dot = document.getElementById(dotId);
+  const dot     = document.getElementById(dotId);
   const verdict = document.getElementById(verdictId);
-  dot.className = "vote-dot " + (isMalicious ? "malicious" : "benign");
+  dot.className     = "vote-dot " + (isMalicious ? "malicious" : "benign");
   verdict.textContent = isMalicious ? "Malicious" : "Benign";
-  verdict.className = "vote-verdict " + (isMalicious ? "malicious" : "benign");
+  verdict.className   = "vote-verdict " + (isMalicious ? "malicious" : "benign");
 }
 
 function renderResult(data) {
   const isMalicious = data.final_label === 1;
-  const confidence = data.confidence;
+  const confidence  = data.confidence;
 
-  // Badge: MALICIOUS (high) → red, MALICIOUS (low / 1 vote) → orange SUSPICIOUS, BENIGN → green
   const badge = document.getElementById("badge");
   if (!isMalicious) {
     badge.textContent = "SAFE";
-    badge.className = "badge safe";
+    badge.className   = "badge safe";
   } else if (confidence >= 66) {
     badge.textContent = "MALICIOUS";
-    badge.className = "badge malicious";
+    badge.className   = "badge malicious";
   } else {
     badge.textContent = "SUSPICIOUS";
-    badge.className = "badge suspicious";
+    badge.className   = "badge suspicious";
   }
 
   document.getElementById("confidence").textContent = confidence + "%";
 
-  // Find RF and XGBoost keys dynamically
   const rfKey  = Object.keys(data).find((k) => k.endsWith("_prediction") && k.includes("random_forest"));
   const xgbKey = Object.keys(data).find((k) => k.endsWith("_prediction") && k.includes("xgboost"));
 
@@ -44,7 +43,6 @@ function renderResult(data) {
   setVote("dot-xgb",  "verdict-xgb",  xgbKey ? data[xgbKey] : 0);
   setVote("dot-rule", "verdict-rule", data.rule_prediction);
 
-  // Rules
   const container = document.getElementById("rules-container");
   const rules = data.triggered_rules || [];
   if (rules.length === 0) {
@@ -61,10 +59,29 @@ function renderResult(data) {
     container.appendChild(ul);
   }
 
+  // "Last checked" timestamp
+  const ts = document.getElementById("checked-at");
+  if (data._checkedAt) {
+    const secs = Math.round((Date.now() - data._checkedAt) / 1000);
+    ts.textContent = secs < 5 ? "Last checked: just now" : `Last checked: ${secs}s ago`;
+    ts.style.display = "block";
+  } else {
+    ts.style.display = "none";
+  }
+
   show("result");
 }
 
-async function checkUrl(url) {
+async function checkUrl(url, forceRefresh = false) {
+  if (!forceRefresh && currentTabId !== null) {
+    const key    = `tab_${currentTabId}`;
+    const stored = await chrome.storage.local.get(key);
+    if (stored[key]) {
+      renderResult(stored[key]);
+      return;
+    }
+  }
+
   show("loading");
   try {
     const resp = await fetch(`${API}/classify`, {
@@ -74,21 +91,28 @@ async function checkUrl(url) {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    data._checkedAt = Date.now();
+
+    if (currentTabId !== null) {
+      await chrome.storage.local.set({ [`tab_${currentTabId}`]: data });
+    }
     renderResult(data);
   } catch {
     show("error");
   }
 }
 
-function truncate(url, max = 50) {
+function truncate(url, max = 52) {
   return url.length > max ? url.slice(0, max) + "…" : url;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  currentUrl = tabs[0]?.url || "";
-  document.getElementById("url-display").textContent = truncate(currentUrl, 52);
+  const tab    = tabs[0];
+  currentTabId = tab?.id ?? null;
+  currentUrl   = tab?.url || "";
+  document.getElementById("url-display").textContent = truncate(currentUrl);
   if (currentUrl) {
     checkUrl(currentUrl);
   } else {
@@ -97,11 +121,11 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 });
 
 document.getElementById("recheck-btn").addEventListener("click", () => {
-  if (currentUrl) checkUrl(currentUrl);
+  if (currentUrl) checkUrl(currentUrl, true);
 });
 
 document.getElementById("retry-btn").addEventListener("click", () => {
-  if (currentUrl) checkUrl(currentUrl);
+  if (currentUrl) checkUrl(currentUrl, true);
 });
 
 document.getElementById("dashboard-btn").addEventListener("click", () => {
