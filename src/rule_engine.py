@@ -1,84 +1,90 @@
+"""Rule-based URL classifier. Third voter in the majority-voting ensemble."""
+
 import re
 
-_BRAND_WORDS = re.compile(
-    r"verify|secure|update|account|login|signin|banking|confirm|password"
-    r"|paypal|amazon|apple|microsoft|google|facebook",
-    re.IGNORECASE,
-)
-_PRIZE_WORDS = re.compile(
-    r"free-prize|free|prize|winner|claim|reward|lucky|congratulations"
-    r"|you-won|click-here|limited-offer",
-    re.IGNORECASE,
-)
-_SHORTENED_PRIZE_WORDS = re.compile(
-    r"free|prize|click|win|reward|offer|lucky|claim",
-    re.IGNORECASE,
-)
+import tldextract
+
+from keywords import BRAND_KEYWORDS, PRIZE_KEYWORDS, SUSPICIOUS_KEYWORDS
+
+_BRAND_RE = re.compile("|".join(BRAND_KEYWORDS), re.IGNORECASE)
+_SUSPICIOUS_RE = re.compile("|".join(SUSPICIOUS_KEYWORDS), re.IGNORECASE)
+_PRIZE_RE = re.compile("|".join(PRIZE_KEYWORDS), re.IGNORECASE)
+
+_extractor = tldextract.TLDExtract(suffix_list_urls=())
+_BRAND_LOWER = {b.lower() for b in BRAND_KEYWORDS}
 
 
 def _suspicious_domain_pattern(url, f):
-    from urllib.parse import urlparse
-    domain = urlparse(url).netloc.split(":")[0]
-    return domain.count("-") >= 2 and bool(_BRAND_WORDS.search(url))
+    ext = _extractor(url)
+    registered = (ext.domain or "").lower()
+    subdomain = (ext.subdomain or "").lower()
+    if registered in _BRAND_LOWER:
+        return False
+    has_hyphens = registered.count("-") >= 2
+    brand_present = bool(_BRAND_RE.search(registered) or _BRAND_RE.search(subdomain))
+    return has_hyphens and brand_present
+
+
+def _brand_in_subdomain_phishing(url, f):
+    return f.get("brand_in_subdomain_not_domain", 0) == 1
+
+
+def _prize_scam_with_signal(url, f):
+    if not _PRIZE_RE.search(url):
+        return False
+    return (
+        f.get("is_shortened", 0) == 1
+        or f.get("has_https", 0) == 0
+        or f.get("is_suspicious_tld", 0) == 1
+    )
 
 
 RULES = [
-    (
-        "has_ip_address",
-        lambda url, f: f["has_ip_address"] == 1,
-        "URL uses a raw IP address instead of a domain name",
-    ),
-    (
-        "suspicious_words_no_https",
-        lambda url, f: f["has_suspicious_words"] == 1 and f["has_https"] == 0,
-        "URL contains suspicious words and does not use HTTPS",
-    ),
-    (
-        "url_too_long",
-        lambda url, f: f["url_length"] > 200,
-        "URL length exceeds 200 characters",
-    ),
-    (
-        "has_at_symbol",
-        lambda url, f: f["num_at_symbols"] > 0,
-        "URL contains @ symbol (credential injection attempt)",
-    ),
-    (
-        "shortened_url",
-        lambda url, f: f["is_shortened"] == 1,
-        "URL uses a known shortener service",
-    ),
-    (
-        "high_digit_ratio",
-        lambda url, f: f["digit_to_letter_ratio"] > 1.5,
-        f"Digit-to-letter ratio exceeds 1.5 (ratio={'{digit_to_letter_ratio:.3f}'})",
-    ),
-    (
-        "too_many_subdomains",
-        lambda url, f: f["num_subdomains"] > 4,
-        f"URL has more than 4 subdomains (count={'{num_subdomains}'})",
-    ),
-    (
-        "suspicious_domain_pattern",
-        _suspicious_domain_pattern,
-        "Domain contains multiple hyphens with a brand/sensitive keyword",
-    ),
-    (
-        "prize_scam_pattern",
-        lambda url, f: bool(_PRIZE_WORDS.search(url)),
-        "URL contains prize-scam keywords (free-prize, winner, claim, etc.)",
-    ),
-    (
-        "shortened_with_prize_words",
-        lambda url, f: f["is_shortened"] == 1 and bool(_SHORTENED_PRIZE_WORDS.search(url)),
-        "URL uses a shortener and contains prize/scam-bait words",
-    ),
+    ("has_ip_address",
+     lambda url, f: f["has_ip_address"] == 1,
+     "URL uses a raw IP address instead of a domain name"),
+    ("suspicious_words_no_https",
+     lambda url, f: f["has_suspicious_words"] == 1 and f["has_https"] == 0,
+     "URL contains credential-related keywords and does not use HTTPS"),
+    ("url_too_long",
+     lambda url, f: f["url_length"] > 200,
+     "URL length exceeds 200 characters"),
+    ("has_at_symbol",
+     lambda url, f: f["num_at_symbols"] > 0,
+     "URL contains @ symbol (credential-injection technique)"),
+    ("shortened_url",
+     lambda url, f: f["is_shortened"] == 1,
+     "URL uses a known URL-shortening service"),
+    ("high_digit_ratio",
+     lambda url, f: f["digit_to_letter_ratio"] > 1.5,
+     "Digit-to-letter ratio is unusually high"),
+    ("too_many_subdomains",
+     lambda url, f: f["num_subdomains"] > 4,
+     "URL has an unusually deep subdomain hierarchy"),
+    ("suspicious_domain_pattern",
+     _suspicious_domain_pattern,
+     "Registered domain contains multiple hyphens plus a brand keyword"),
+    ("brand_in_subdomain_phishing",
+     _brand_in_subdomain_phishing,
+     "Brand name appears in subdomain of an unrelated registered domain"),
+    ("prize_scam_pattern",
+     _prize_scam_with_signal,
+     "URL contains prize/scam-bait keywords alongside another risk signal"),
+    ("punycode_domain",
+     lambda url, f: f.get("has_punycode", 0) == 1,
+     "Domain uses Punycode encoding (possible homograph attack)"),
+    ("suspicious_tld",
+     lambda url, f: f.get("is_suspicious_tld", 0) == 1,
+     "URL uses a TLD frequently abused for phishing or malware"),
 ]
 
-# Rule descriptions that embed feature values at call time
 _DYNAMIC_DESCRIPTIONS = {
-    "high_digit_ratio": lambda f: f"Digit-to-letter ratio exceeds 1.5 (ratio={f['digit_to_letter_ratio']:.3f})",
-    "too_many_subdomains": lambda f: f"URL has more than 4 subdomains (count={f['num_subdomains']})",
+    "high_digit_ratio": lambda f: (
+        f"Digit-to-letter ratio is unusually high (ratio={f['digit_to_letter_ratio']:.2f})"
+    ),
+    "too_many_subdomains": lambda f: (
+        f"URL has an unusually deep subdomain hierarchy (count={f['num_subdomains']})"
+    ),
 }
 
 
@@ -86,8 +92,10 @@ def get_triggered_rules(url, features):
     triggered = []
     for name, condition, description in RULES:
         if condition(url, features):
-            desc = _DYNAMIC_DESCRIPTIONS[name](features) if name in _DYNAMIC_DESCRIPTIONS else description
-            triggered.append(desc)
+            if name in _DYNAMIC_DESCRIPTIONS:
+                triggered.append(_DYNAMIC_DESCRIPTIONS[name](features))
+            else:
+                triggered.append(description)
     return triggered
 
 
@@ -99,33 +107,34 @@ def rule_based_classify(url, features):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
+    import sys, os
     sys.path.insert(0, os.path.dirname(__file__))
     from feature_extractor import extract_features
 
-    test_cases = [
-        # (url, expected_label, description)
-        ("http://192.168.1.1/admin/login.php", 1, "Raw IP with login path"),
-        ("http://paypa1-secure.verify-account.com/update", 1, "Suspicious words, no HTTPS"),
-        ("http://" + "a" * 190 + ".com/path", 1, "Extremely long URL"),
-        ("https://google.com", 0, "Benign — Google"),
-        ("https://github.com/user/repo", 0, "Benign — GitHub"),
+    tests = [
+        ("http://192.168.1.1/admin/login.php", 1, "Raw IP + login"),
+        ("http://paypal-secure-verify.com/update", 1, "Multi-hyphen brand"),
+        ("https://paypal.attacker.com/login", 1, "Brand in subdomain"),
+        ("https://bit.ly/free-prize-click", 1, "Shortener + prize"),
+        ("https://google.com", 0, "Benign Google"),
+        ("https://github.com/user/repo", 0, "Benign GitHub"),
+        ("https://developer.apple.com/documentation/security", 0,
+         "Apple docs (no FP)"),
+        ("https://www.gnu.org/philosophy/free-sw.html", 0,
+         "GNU 'free' page (no FP)"),
     ]
 
-    print(f"{'URL':<55} {'Expected':>8} {'Got':>5}  Triggered Rules")
-    print("-" * 110)
-    all_passed = True
-    for url, expected, desc in test_cases:
-        features = extract_features(url)
-        label = rule_based_classify(url, features)
-        rules = get_triggered_rules(url, features)
-        status = "PASS" if label == expected else "FAIL"
+    all_pass = True
+    for url, expected, desc in tests:
+        feats = extract_features(url)
+        got = rule_based_classify(url, feats)
+        rules = get_triggered_rules(url, feats)
+        status = "PASS" if got == expected else "FAIL"
         if status == "FAIL":
-            all_passed = False
-        display_url = url if len(url) <= 52 else url[:49] + "..."
-        rules_str = "; ".join(rules) if rules else "none"
-        print(f"{display_url:<55} {expected:>8} {label:>5}  [{status}] {rules_str}")
+            all_pass = False
+        print(f"[{status}] {desc:30} expected={expected} got={got}")
+        if rules:
+            for r in rules:
+                print(f"        - {r}")
 
-    print()
-    print("All tests passed." if all_passed else "Some tests FAILED.")
+    print("\nAll tests passed." if all_pass else "\nSome tests FAILED.")
