@@ -1,5 +1,8 @@
+"""Streamlit dashboard for the malicious URL detector."""
+
 import matplotlib
 import matplotlib.pyplot as plt
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -13,20 +16,8 @@ st.set_page_config(
     page_icon="shield",
 )
 
-# ── Header ────────────────────────────────────────────────────────────────────
 
-st.title("Malicious URL Detection Dashboard")
-st.caption(
-    "Majority-voting ensemble (Random Forest + XGBoost + Rule Engine) "
-    "that classifies URLs as malicious or benign using 18 lexical features."
-)
-if st.button("Refresh Dashboard"):
-    st.rerun()
-st.divider()
-
-
-# ── Fetch data ────────────────────────────────────────────────────────────────
-
+@st.cache_data(ttl=10, show_spinner=False)
 def get_stats():
     try:
         return requests.get(f"{API}/stats", timeout=5).json()
@@ -34,6 +25,7 @@ def get_stats():
         return None
 
 
+@st.cache_data(ttl=10, show_spinner=False)
 def get_history(limit=50):
     try:
         return requests.get(f"{API}/history", params={"limit": limit}, timeout=5).json()
@@ -48,11 +40,28 @@ def classify(url):
         return {"error": str(e)}
 
 
+def find_model_keys(result, suffix):
+    """Find the two model keys ending with the given suffix (sorted for stable order)."""
+    return sorted([k for k in result if k.endswith(suffix) and k != "rule_prediction"])
+
+
+# Header
+st.title("Malicious URL Detection Dashboard")
+st.caption(
+    "Majority-voting ensemble (2 ML models + rule engine) with "
+    "high-precision rule overrides."
+)
+if st.button("Refresh Dashboard"):
+    get_stats.clear()
+    get_history.clear()
+    st.rerun()
+st.divider()
+
 stats = get_stats()
 history = get_history(50)
 
-# ── Metrics row ───────────────────────────────────────────────────────────────
 
+# Metrics
 c1, c2, c3, c4 = st.columns(4)
 if stats:
     c1.metric("Total URLs Scanned", stats["total_scanned"])
@@ -62,12 +71,13 @@ if stats:
 else:
     for col in (c1, c2, c3, c4):
         col.metric("—", "—")
-    st.warning("Could not reach the API at http://localhost:8000 — is the FastAPI server running?")
+    st.warning("Could not reach the API at http://localhost:8000. "
+               "Is the FastAPI server running?")
 
 st.divider()
 
-# ── Charts row ────────────────────────────────────────────────────────────────
 
+# Charts
 left, right = st.columns(2)
 
 with left:
@@ -88,11 +98,15 @@ with left:
         st.info("No data yet.")
 
 with right:
-    st.subheader("Last 10 Classifications — Confidence")
+    st.subheader("Last 10 Classifications, Confidence")
     if history:
         recent = history[:10][::-1]
-        labels = [r["url"][:30] + ("..." if len(r["url"]) > 30 else "") for r in recent]
-        colors = ["#e74c3c" if r["final_label"] == 1 else "#2ecc71" for r in recent]
+        labels = [
+            r["url"][:30] + ("..." if len(r["url"]) > 30 else "") for r in recent
+        ]
+        colors = [
+            "#e74c3c" if r["final_label"] == 1 else "#2ecc71" for r in recent
+        ]
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         ax2.barh(labels, [r["confidence"] for r in recent], color=colors)
         ax2.set_xlabel("Confidence (%)")
@@ -106,8 +120,8 @@ with right:
 
 st.divider()
 
-# ── Recent threats ────────────────────────────────────────────────────────────
 
+# Recent threats
 st.subheader("Recent Threats")
 threats = stats["recent_threats"] if stats else []
 if threats:
@@ -117,8 +131,8 @@ if threats:
             padding:10px 14px;border-radius:4px;margin-bottom:8px">
             <b style="color:#c0392b">MALICIOUS</b> &nbsp;
             <code>{t['url']}</code><br>
-            <small>Confidence: <b>{t['confidence']}%</b> &nbsp;|&nbsp; {t['timestamp']}</small>
-            </div>""",
+            <small>Confidence: <b>{t['confidence']}%</b> &nbsp;|&nbsp;
+            {t['timestamp']}</small></div>""",
             unsafe_allow_html=True,
         )
 else:
@@ -126,26 +140,21 @@ else:
 
 st.divider()
 
-# ── History table ─────────────────────────────────────────────────────────────
 
+# History table
 st.subheader("Classification History")
 if history:
-    import pandas as pd
-
     rows = []
     for r in history:
         rules = r.get("triggered_rules") or []
-        rows.append(
-            {
-                "Timestamp": r["timestamp"][:19].replace("T", " "),
-                "URL": r["url"],
-                "Result": r["final_result"],
-                "Confidence": f"{r['confidence']}%",
-                "Votes": f"{r['votes_for_malicious']}/3",
-                "Triggered Rules": "; ".join(rules) if rules else "none",
-            }
-        )
-
+        rows.append({
+            "Timestamp": r["timestamp"][:19].replace("T", " "),
+            "URL": r["url"],
+            "Result": r["final_result"],
+            "Confidence": f"{r['confidence']}%",
+            "Votes": f"{r['votes_for_malicious']}/3",
+            "Triggered Rules": "; ".join(rules) if rules else "none",
+        })
     df = pd.DataFrame(rows)
 
     def color_result(val):
@@ -162,8 +171,8 @@ else:
 
 st.divider()
 
-# ── Live URL checker ──────────────────────────────────────────────────────────
 
+# Live URL checker
 st.subheader("Check a URL")
 url_input = st.text_input("Enter a URL to analyse:", placeholder="https://example.com")
 
@@ -175,22 +184,32 @@ if st.button("Check URL", type="primary"):
             result = classify(url_input.strip())
         if "error" in result:
             st.error(f"API error: {result['error']}")
+        elif "detail" in result:
+            st.error(f"Validation error: {result['detail']}")
         else:
             st.session_state["last_result"] = result
+            get_stats.clear()
+            get_history.clear()
             st.rerun()
+
 
 if "last_result" in st.session_state:
     result = st.session_state["last_result"]
     is_malicious = result["final_label"] == 1
     badge_color = "#e74c3c" if is_malicious else "#2ecc71"
     badge_text = result["final_result"]
+    override_badge = (
+        ' <span style="background:#9b59b6;color:white;padding:2px 8px;'
+        'border-radius:3px;font-size:0.75em;font-weight:bold">OVERRIDE</span>'
+        if result.get("override_applied") else ""
+    )
 
     st.markdown(
         f"""<div style="background:{'#fdecea' if is_malicious else '#eafaf1'};
         border-left:4px solid {badge_color};padding:14px 18px;
         border-radius:6px;margin-bottom:12px">
         <span style="font-size:1.3em;font-weight:bold;color:{badge_color}">
-        {badge_text}</span>
+        {badge_text}</span>{override_badge}
         &nbsp;&nbsp;Confidence: <b>{result['confidence']}%</b>
         &nbsp;|&nbsp; Votes: <b>{result['votes_for_malicious']}/3</b>
         &nbsp;|&nbsp; URL: <code>{result['url']}</code>
@@ -199,11 +218,28 @@ if "last_result" in st.session_state:
     )
 
     v1, v2, v3 = st.columns(3)
-    rf_key = next((k for k in result if k.endswith("_prediction") and "random_forest" in k), None)
-    xgb_key = next((k for k in result if k.endswith("_prediction") and "xgboost" in k), None)
-    v1.metric("Random Forest", "Malicious" if result.get(rf_key) == 1 else "Benign")
-    v2.metric("XGBoost", "Malicious" if result.get(xgb_key) == 1 else "Benign")
-    v3.metric("Rule Engine", "Malicious" if result["rule_prediction"] == 1 else "Benign")
+
+    pred_keys = find_model_keys(result, "_prediction")
+    proba_keys = find_model_keys(result, "_proba")
+
+    if len(pred_keys) >= 2 and len(proba_keys) >= 2:
+        name1 = pred_keys[0].replace("_prediction", "").replace("_", " ").title()
+        name2 = pred_keys[1].replace("_prediction", "").replace("_", " ").title()
+        v1.metric(
+            name1,
+            "Malicious" if result[pred_keys[0]] == 1 else "Benign",
+            help=f"P(malicious) = {result[proba_keys[0]]}",
+        )
+        v2.metric(
+            name2,
+            "Malicious" if result[pred_keys[1]] == 1 else "Benign",
+            help=f"P(malicious) = {result[proba_keys[1]]}",
+        )
+
+    v3.metric(
+        "Rule Engine",
+        "Malicious" if result["rule_prediction"] == 1 else "Benign",
+    )
 
     rules = result.get("triggered_rules") or []
     if rules:
