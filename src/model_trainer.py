@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
     print(f"\nTop 2 models by F1:")
     for i, (name, data) in enumerate(top2, 1):
-        print(f"  #{i}: {name} — F1={data['metrics']['f1']:.4f} | "
+        print(f"  #{i}: {name} - F1={data['metrics']['f1']:.4f} | "
               f"Best params: {data['best_params']}")
 
     # Save top 2 models
