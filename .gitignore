@@ -26,3 +26,9 @@ Thumbs.db
 
 # Streamlit
 .streamlit/
+
+# Picture
+preview.webp
+
+# Local launcher
+start.bat
