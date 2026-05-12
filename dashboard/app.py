@@ -58,6 +58,24 @@ def format_timestamp(iso_string):
     return iso_string.replace("T", " ").split(".")[0]
 
 
+def classify_tier(final_label, confidence):
+    """Map binary final_label + confidence to three-tier display."""
+    if final_label == 0:
+        return "SAFE"
+    if confidence >= 66:
+        return "MALICIOUS"
+    return "SUSPICIOUS"
+
+
+def tier_colors(tier):
+    """Return (text_color, accent_color, background_color) for each tier."""
+    if tier == "MALICIOUS":
+        return "#fc8181", "#fc8181", "#2d1b1f"
+    if tier == "SUSPICIOUS":
+        return "#fbbf24", "#fbbf24", "#2d2516"
+    return "#68d391", "#68d391", "#0f2818"
+
+
 # Header
 st.title("Malicious URL Detection Dashboard")
 st.caption(
@@ -82,14 +100,20 @@ history = get_history(50)
 
 
 # Metrics
-c1, c2, c3, c4 = st.columns(4)
-if stats:
-    c1.metric("Total URLs Scanned", stats["total_scanned"])
-    c2.metric("Total Malicious", stats["total_malicious"])
-    c3.metric("Total Benign", stats["total_benign"])
-    c4.metric("Malicious %", f"{stats['malicious_percentage']}%")
+c1, c2, c3, c4, c5 = st.columns(5)
+if stats and history is not None:
+    suspicious_count = sum(
+        1 for r in history
+        if classify_tier(r["final_label"], r["confidence"]) == "SUSPICIOUS"
+    )
+    malicious_high_conf = stats["total_malicious"] - suspicious_count
+    c1.metric("Total Scanned", stats["total_scanned"])
+    c2.metric("Malicious", malicious_high_conf)
+    c3.metric("Suspicious", suspicious_count)
+    c4.metric("Safe", stats["total_benign"])
+    c5.metric("Threat %", f"{stats['malicious_percentage']}%")
 else:
-    for col in (c1, c2, c3, c4):
+    for col in (c1, c2, c3, c4, c5):
         col.metric("-", "-")
     st.warning("Could not reach the API at http://localhost:8000. "
                "Is the FastAPI server running?")
@@ -103,15 +127,23 @@ left, right = st.columns(2)
 with left:
     st.subheader("Distribution")
     if stats and stats["total_scanned"] > 0:
-        fig, ax = plt.subplots(figsize=(4, 4))
-        ax.pie(
+        fig, ax = plt.subplots(figsize=(6, 4), facecolor="#0f172a")
+        ax.set_facecolor("#0f172a")
+        wedges, texts, autotexts = ax.pie(
             [stats["total_malicious"], stats["total_benign"]],
             labels=["Malicious", "Benign"],
-            colors=["#e74c3c", "#2ecc71"],
+            colors=["#fc8181", "#68d391"],
             autopct="%1.1f%%",
             startangle=90,
+            textprops={"color": "#e2e8f0"},
+            radius=0.85,
         )
-        ax.set_title("Malicious vs Benign")
+        for at in autotexts:
+            at.set_color("#0f172a")
+            at.set_fontweight("bold")
+        ax.set_title("Malicious vs Benign", color="#e2e8f0", pad=10)
+        ax.set_aspect("equal")
+        fig.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
     else:
@@ -127,11 +159,24 @@ with right:
         colors = [
             "#e74c3c" if r["final_label"] == 1 else "#2ecc71" for r in recent
         ]
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        ax2.barh(labels, [r["confidence"] for r in recent], color=colors)
-        ax2.set_xlabel("Confidence (%)")
+        def bar_color(r):
+            tier = classify_tier(r["final_label"], r["confidence"])
+            if tier == "MALICIOUS":
+                return "#fc8181"
+            if tier == "SUSPICIOUS":
+                return "#fbbf24"
+            return "#68d391"
+        bar_colors = [bar_color(r) for r in recent]
+        fig2, ax2 = plt.subplots(figsize=(6, 4), facecolor="#0f172a")
+        ax2.set_facecolor("#0f172a")
+        ax2.barh(labels, [r["confidence"] for r in recent], color=bar_colors)
+        ax2.set_xlabel("Confidence (%)", color="#e2e8f0")
         ax2.set_xlim(0, 100)
-        ax2.set_title("Confidence by URL (red=malicious, green=benign)")
+        ax2.set_title("Confidence by URL (red=malicious, orange=suspicious, green=safe)",
+                      color="#e2e8f0")
+        ax2.tick_params(colors="#e2e8f0")
+        for spine in ax2.spines.values():
+            spine.set_edgecolor("#475569")
         fig2.tight_layout()
         st.pyplot(fig2)
         plt.close(fig2)
@@ -146,17 +191,21 @@ st.subheader("Recent Threats")
 threats = stats["recent_threats"] if stats else []
 if threats:
     for t in threats:
+        # Recent threats always have final_label=1 (filtered by backend);
+        # tier is MALICIOUS or SUSPICIOUS based on confidence
+        tier = classify_tier(1, t["confidence"])
+        accent, _, bg = tier_colors(tier)
         st.markdown(
-            f"""<div style="background:#fdecea;border-left:4px solid #e74c3c;
-            padding:10px 14px;border-radius:4px;margin-bottom:8px;color:#222">
-            <b style="color:#c0392b">MALICIOUS</b> &nbsp;
-            <code style="background:#fff;padding:2px 4px;border-radius:3px">{t['url']}</code><br>
-            <small>Confidence: <b>{t['confidence']}%</b> &nbsp;|&nbsp;
+            f"""<div style="background:{bg};border-left:4px solid {accent};
+            padding:10px 14px;border-radius:4px;margin-bottom:8px;color:#e2e8f0">
+            <b style="color:{accent}">{tier}</b> &nbsp;
+            <code style="background:#1e293b;padding:2px 4px;border-radius:3px;color:#fbbf24">{t['url']}</code><br>
+            <small style="color:#94a3b8">Confidence: <b style="color:#e2e8f0">{t['confidence']}%</b> &nbsp;|&nbsp;
             {format_timestamp(t['timestamp'])}</small></div>""",
             unsafe_allow_html=True,
         )
 else:
-    st.info("No malicious URLs detected yet.")
+    st.info("No threats detected yet.")
 
 st.divider()
 
@@ -167,10 +216,11 @@ if history:
     rows = []
     for r in history:
         rules = r.get("triggered_rules") or []
+        tier = classify_tier(r["final_label"], r["confidence"])
         rows.append({
             "Timestamp": format_timestamp(r["timestamp"]),
             "URL": r["url"],
-            "Result": r["final_result"],
+            "Result": tier,
             "Confidence": f"{r['confidence']}%",
             "Votes": format_votes(r["votes_for_malicious"], r["final_label"]),
             "Triggered Rules": "; ".join(rules) if rules else "none",
@@ -178,12 +228,17 @@ if history:
     df = pd.DataFrame(rows)
 
     def color_result(val):
-        color = "#e74c3c" if val == "MALICIOUS" else "#2ecc71"
+        if val == "MALICIOUS":
+            color = "#fc8181"
+        elif val == "SUSPICIOUS":
+            color = "#fbbf24"
+        else:
+            color = "#68d391"
         return f"color: {color}; font-weight: bold"
 
     st.dataframe(
         df.style.map(color_result, subset=["Result"]),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "URL": st.column_config.TextColumn("URL", width="medium"),
@@ -245,25 +300,24 @@ if "check_error" in st.session_state:
 
 if "last_result" in st.session_state:
     result = st.session_state["last_result"]
-    is_malicious = result["final_label"] == 1
-    badge_color = "#e74c3c" if is_malicious else "#2ecc71"
-    badge_text = result["final_result"]
+    tier = classify_tier(result["final_label"], result["confidence"])
+    accent, badge_color, bg = tier_colors(tier)
+    badge_text = tier
     override_badge = (
         ' <span style="background:#9b59b6;color:white;padding:2px 8px;'
         'border-radius:3px;font-size:0.75em;font-weight:bold">OVERRIDE</span>'
         if result.get("override_applied") else ""
     )
-
-    text_color = "#222"
+    text_color = "#e2e8f0"
     st.markdown(
-        f"""<div style="background:{'#fdecea' if is_malicious else '#eafaf1'};
+        f"""<div style="background:{bg};
         border-left:4px solid {badge_color};padding:14px 18px;
         border-radius:6px;margin-bottom:12px;color:{text_color}">
-        <span style="font-size:1.3em;font-weight:bold;color:{badge_color}">
+        <span style="font-size:1.3em;font-weight:bold;color:{accent}">
         {badge_text}</span>{override_badge}
         &nbsp;&nbsp;<span style="color:{text_color}">Confidence: <b>{result['confidence']}%</b>
         &nbsp;|&nbsp; <b>{format_votes(result['votes_for_malicious'], result['final_label'])}</b>
-        &nbsp;|&nbsp; URL: <code style="background:#fff;padding:2px 4px;border-radius:3px">{result['url']}</code></span>
+        &nbsp;|&nbsp; URL: <code style="background:#1e293b;padding:2px 4px;border-radius:3px;color:#fbbf24">{result['url']}</code></span>
         </div>""",
         unsafe_allow_html=True,
     )

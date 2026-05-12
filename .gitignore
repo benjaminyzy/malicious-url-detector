@@ -24,8 +24,8 @@ database/*.db
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
+# Streamlit — config.toml is intentionally tracked; exclude only local cache
+.streamlit/secrets.toml
 
 # Picture
 preview.webp
