@@ -41,8 +41,21 @@ def classify(url):
 
 
 def find_model_keys(result, suffix):
-    """Find the two model keys ending with the given suffix (sorted for stable order)."""
     return sorted([k for k in result if k.endswith(suffix) and k != "rule_prediction"])
+
+
+def format_votes(votes_for_malicious, final_label):
+    """Display votes as agreement with the final verdict."""
+    if final_label == 1:
+        return f"{votes_for_malicious}/3 voted malicious"
+    return f"{3 - votes_for_malicious}/3 voted safe"
+
+
+def format_timestamp(iso_string):
+    """Convert ISO 8601 string to YYYY-MM-DD HH:MM:SS."""
+    if not iso_string:
+        return ""
+    return iso_string.replace("T", " ").split(".")[0]
 
 
 # Header
@@ -51,10 +64,17 @@ st.caption(
     "Majority-voting ensemble (2 ML models + rule engine) with "
     "high-precision rule overrides."
 )
-if st.button("Refresh Dashboard"):
-    get_stats.clear()
-    get_history.clear()
-    st.rerun()
+
+col_refresh, _ = st.columns([2, 8])
+with col_refresh:
+    if st.button("Refresh Dashboard Data"):
+        get_stats.clear()
+        get_history.clear()
+        st.rerun()
+st.caption(
+    "Refresh updates the metrics, charts, and history from the database. "
+    "Your last URL check stays visible until you click 'Clear Result' below."
+)
 st.divider()
 
 stats = get_stats()
@@ -70,7 +90,7 @@ if stats:
     c4.metric("Malicious %", f"{stats['malicious_percentage']}%")
 else:
     for col in (c1, c2, c3, c4):
-        col.metric("—", "—")
+        col.metric("-", "-")
     st.warning("Could not reach the API at http://localhost:8000. "
                "Is the FastAPI server running?")
 
@@ -128,11 +148,11 @@ if threats:
     for t in threats:
         st.markdown(
             f"""<div style="background:#fdecea;border-left:4px solid #e74c3c;
-            padding:10px 14px;border-radius:4px;margin-bottom:8px">
+            padding:10px 14px;border-radius:4px;margin-bottom:8px;color:#222">
             <b style="color:#c0392b">MALICIOUS</b> &nbsp;
-            <code>{t['url']}</code><br>
+            <code style="background:#fff;padding:2px 4px;border-radius:3px">{t['url']}</code><br>
             <small>Confidence: <b>{t['confidence']}%</b> &nbsp;|&nbsp;
-            {t['timestamp']}</small></div>""",
+            {format_timestamp(t['timestamp'])}</small></div>""",
             unsafe_allow_html=True,
         )
 else:
@@ -148,11 +168,11 @@ if history:
     for r in history:
         rules = r.get("triggered_rules") or []
         rows.append({
-            "Timestamp": r["timestamp"][:19].replace("T", " "),
+            "Timestamp": format_timestamp(r["timestamp"]),
             "URL": r["url"],
             "Result": r["final_result"],
             "Confidence": f"{r['confidence']}%",
-            "Votes": f"{r['votes_for_malicious']}/3",
+            "Votes": format_votes(r["votes_for_malicious"], r["final_label"]),
             "Triggered Rules": "; ".join(rules) if rules else "none",
         })
     df = pd.DataFrame(rows)
@@ -165,6 +185,12 @@ if history:
         df.style.map(color_result, subset=["Result"]),
         use_container_width=True,
         hide_index=True,
+        column_config={
+            "URL": st.column_config.TextColumn("URL", width="medium"),
+            "Triggered Rules": st.column_config.TextColumn(
+                "Triggered Rules", width="large"
+            ),
+        },
     )
 else:
     st.info("No history yet.")
@@ -174,23 +200,47 @@ st.divider()
 
 # Live URL checker
 st.subheader("Check a URL")
-url_input = st.text_input("Enter a URL to analyse:", placeholder="https://example.com")
 
-if st.button("Check URL", type="primary"):
-    if not url_input.strip():
-        st.error("Please enter a URL.")
+def _submit_url(url):
+    if not url.strip():
+        st.session_state["check_error"] = "Please enter a URL."
+        return
+    with st.spinner("Analysing..."):
+        result = classify(url.strip())
+    if "error" in result:
+        st.session_state["check_error"] = f"API error: {result['error']}"
+    elif "detail" in result:
+        st.session_state["check_error"] = f"Validation error: {result['detail']}"
     else:
-        with st.spinner("Analysing..."):
-            result = classify(url_input.strip())
-        if "error" in result:
-            st.error(f"API error: {result['error']}")
-        elif "detail" in result:
-            st.error(f"Validation error: {result['detail']}")
-        else:
-            st.session_state["last_result"] = result
-            get_stats.clear()
-            get_history.clear()
-            st.rerun()
+        st.session_state["last_result"] = result
+        st.session_state.pop("check_error", None)
+        get_stats.clear()
+        get_history.clear()
+
+url_input = st.text_input(
+    "Enter a URL to analyse:",
+    placeholder="https://example.com",
+    key="url_input_field",
+)
+
+col_a, _ = st.columns([1, 9])
+with col_a:
+    submit_clicked = st.button("Check URL", type="primary")
+
+last_submitted = st.session_state.get("last_submitted_url", "")
+enter_submitted = (
+    url_input
+    and url_input != last_submitted
+    and not submit_clicked
+)
+
+if submit_clicked or enter_submitted:
+    st.session_state["last_submitted_url"] = url_input
+    _submit_url(url_input)
+    st.rerun()
+
+if "check_error" in st.session_state:
+    st.error(st.session_state["check_error"])
 
 
 if "last_result" in st.session_state:
@@ -204,15 +254,16 @@ if "last_result" in st.session_state:
         if result.get("override_applied") else ""
     )
 
+    text_color = "#222"
     st.markdown(
         f"""<div style="background:{'#fdecea' if is_malicious else '#eafaf1'};
         border-left:4px solid {badge_color};padding:14px 18px;
-        border-radius:6px;margin-bottom:12px">
+        border-radius:6px;margin-bottom:12px;color:{text_color}">
         <span style="font-size:1.3em;font-weight:bold;color:{badge_color}">
         {badge_text}</span>{override_badge}
-        &nbsp;&nbsp;Confidence: <b>{result['confidence']}%</b>
-        &nbsp;|&nbsp; Votes: <b>{result['votes_for_malicious']}/3</b>
-        &nbsp;|&nbsp; URL: <code>{result['url']}</code>
+        &nbsp;&nbsp;<span style="color:{text_color}">Confidence: <b>{result['confidence']}%</b>
+        &nbsp;|&nbsp; <b>{format_votes(result['votes_for_malicious'], result['final_label'])}</b>
+        &nbsp;|&nbsp; URL: <code style="background:#fff;padding:2px 4px;border-radius:3px">{result['url']}</code></span>
         </div>""",
         unsafe_allow_html=True,
     )
