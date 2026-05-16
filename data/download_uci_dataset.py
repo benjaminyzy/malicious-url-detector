@@ -39,7 +39,8 @@ print(f"  Raw label values: {sorted(unique_labels)}")
 if set(unique_labels) == {1, -1}:
     df["label"] = df["label"].map({1: 0, -1: 1})
 elif set(unique_labels) <= {0, 1}:
-    pass  # already correct
+    # PhiUSIIL's 0/1 is INVERTED vs ours: 1=legitimate, 0=phishing.
+    df["label"] = df["label"].map({0: 1, 1: 0})
 else:
     # Fallback: treat the minority class as phishing
     minority = df["label"].value_counts().idxmin()

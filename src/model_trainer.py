@@ -21,10 +21,17 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 
+# has_https is excluded from the ML feature set: the path-rich benign source
+# (PhishStorm) ships scheme-less URLs, so a prepended scheme would make
+# has_https a data-source artifact rather than a genuine signal. The feature
+# is still produced by feature_extractor.py and used by the rule engine.
+EXCLUDED_FEATURES = ("url", "label", "has_https")
+
+
 def load_data():
     print(f"Loading {DATA_PATH}...")
     df = pd.read_csv(DATA_PATH)
-    feature_cols = [c for c in df.columns if c not in ("url", "label")]
+    feature_cols = [c for c in df.columns if c not in EXCLUDED_FEATURES]
     X = df[feature_cols]
     y = df["label"]
     print(f"  {len(df)} rows | {len(feature_cols)} features | "

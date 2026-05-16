@@ -101,15 +101,10 @@ history = get_history(50)
 
 # Metrics
 c1, c2, c3, c4, c5 = st.columns(5)
-if stats and history is not None:
-    suspicious_count = sum(
-        1 for r in history
-        if classify_tier(r["final_label"], r["confidence"]) == "SUSPICIOUS"
-    )
-    malicious_high_conf = stats["total_malicious"] - suspicious_count
+if stats:
     c1.metric("Total Scanned", stats["total_scanned"])
-    c2.metric("Malicious", malicious_high_conf)
-    c3.metric("Suspicious", suspicious_count)
+    c2.metric("Malicious", stats.get("total_malicious_high_conf", 0))
+    c3.metric("Suspicious", stats.get("total_suspicious", 0))
     c4.metric("Safe", stats["total_benign"])
     c5.metric("Threat %", f"{stats['malicious_percentage']}%")
 else:
@@ -156,6 +151,7 @@ with right:
         labels = [
             r["url"][:30] + ("..." if len(r["url"]) > 30 else "") for r in recent
         ]
+        # Kept for backward compatibility; actual chart uses bar_colors below
         colors = [
             "#e74c3c" if r["final_label"] == 1 else "#2ecc71" for r in recent
         ]
@@ -272,10 +268,15 @@ def _submit_url(url):
         get_stats.clear()
         get_history.clear()
 
+# Use a counter in the key so we can force-reset the widget by bumping it
+if "input_counter" not in st.session_state:
+    st.session_state["input_counter"] = 0
+input_key = f"url_input_field_{st.session_state['input_counter']}"
+
 url_input = st.text_input(
     "Enter a URL to analyse:",
     placeholder="https://example.com",
-    key="url_input_field",
+    key=input_key,
 )
 
 col_a, _ = st.columns([1, 9])
@@ -356,6 +357,11 @@ if "last_result" in st.session_state:
 
     if st.button("Clear Result"):
         del st.session_state["last_result"]
+        # Bump the counter so the text input gets a fresh widget key,
+        # which forces Streamlit to reset it to empty
+        st.session_state["input_counter"] += 1
+        st.session_state.pop("last_submitted_url", None)
+        st.session_state.pop("check_error", None)
         st.rerun()
 
 st.divider()

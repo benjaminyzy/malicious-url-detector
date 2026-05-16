@@ -168,6 +168,16 @@ def stats():
             .scalar()
             or 0
         )
+        # Compute tier breakdown server-side over the entire table so the
+        # dashboard metrics stay correct regardless of DB size
+        suspicious = (
+            session.query(func.count(Classification.id))
+            .filter(Classification.final_label == 1)
+            .filter(Classification.confidence < 66)
+            .scalar()
+            or 0
+        )
+        malicious_high_conf = malicious - suspicious
         benign = total - malicious
         malicious_pct = round(malicious / total * 100, 1) if total else 0.0
 
@@ -182,6 +192,8 @@ def stats():
         return {
             "total_scanned": total,
             "total_malicious": malicious,
+            "total_malicious_high_conf": malicious_high_conf,
+            "total_suspicious": suspicious,
             "total_benign": benign,
             "malicious_percentage": malicious_pct,
             "recent_threats": [

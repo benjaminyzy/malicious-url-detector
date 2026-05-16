@@ -98,6 +98,10 @@ def classify_url(url):
     override_applied = high_precision_fired and majority_label == 0
     final_label = 1 if (majority_label == 1 or high_precision_fired) else 0
 
+    # rule_proba is a binary 0/1 cast to float, not a true probability.
+    # Averaging with the ML probabilities is a deliberate choice: the rule
+    # engine has no calibrated confidence, so we treat a triggered rule as
+    # 100% certain and an untriggered one as 0% in the average.
     rule_proba = float(rule_pred)
     avg_proba_malicious = (proba1 + proba2 + rule_proba) / 3
 

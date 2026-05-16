@@ -15,8 +15,14 @@ from keywords import (
     SHORTENER_DOMAINS, SUSPICIOUS_TLDS,
 )
 
-_SUSPICIOUS_RE = re.compile("|".join(SUSPICIOUS_KEYWORDS), re.IGNORECASE)
-_BRAND_RE = re.compile("|".join(BRAND_KEYWORDS), re.IGNORECASE)
+_SUSPICIOUS_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, SUSPICIOUS_KEYWORDS)) + r")\b",
+    re.IGNORECASE,
+)
+_BRAND_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, BRAND_KEYWORDS)) + r")\b",
+    re.IGNORECASE,
+)
 _IP_RE = re.compile(
     r"(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)"
 )

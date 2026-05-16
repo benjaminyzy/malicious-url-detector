@@ -104,7 +104,8 @@ async function checkUrl(url, forceRefresh = false) {
       await chrome.storage.local.set({ [`tab_${currentTabId}`]: data });
     }
     renderResult(data);
-  } catch {
+  } catch (e) {
+    console.error("checkUrl failed", e);
     show("error");
   }
 }

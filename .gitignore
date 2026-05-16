@@ -6,13 +6,17 @@ __pycache__/
 venv/
 .venv/
 
-# Data files
+# Data files (including manually-downloaded sources in subdirs:
+# data/raw/phishstorm/, data/raw/iscx/)
+data/raw/**/*.csv
+data/raw/**/*.json
 data/raw/*.csv
 data/raw/*.json
 
 # Trained models
 models/*.pkl
 models/*.joblib
+models/_training_log.txt
 
 # Database
 database/*.db

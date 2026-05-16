@@ -23,19 +23,53 @@ async function updateBadge(tabId, data) {
   }
 }
 
-function notifyIfThreat(tabId, data) {
+// Simple Unicode-safe hash so notification IDs work for any URL
+// and so dedup keys don't collide between tabs.
+function _shortHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+async function notifyIfThreat(tabId, data) {
   if (data.final_label !== 1) return;
+
+  // Persist dedup state to chrome.storage.session so it survives service-
+  // worker suspension. Falls back to in-memory if session storage unavailable.
+  const key = `notified_${tabId}`;
+  let lastNotifiedUrl = null;
+  try {
+    if (chrome.storage.session) {
+      const stored = await chrome.storage.session.get(key);
+      lastNotifiedUrl = stored[key];
+    }
+  } catch (e) {
+    console.error("session storage read failed", e);
+  }
+  if (lastNotifiedUrl === data.url) return;
+
+  try {
+    if (chrome.storage.session) {
+      await chrome.storage.session.set({ [key]: data.url });
+    }
+  } catch (e) {
+    console.error("session storage write failed", e);
+  }
+
   const isHighConfidence = data.confidence >= 66;
   const title = isHighConfidence
     ? "Malicious URL detected"
     : "Suspicious URL detected";
-  const message = `${data.url}\nConfidence: ${data.confidence}%`;
-
-  chrome.notifications.create(`url-alert-${tabId}-${Date.now()}`, {
+  const idHash = _shortHash(data.url);
+  chrome.notifications.create(`url-alert-${tabId}-${idHash}`, {
     type: "basic",
     iconUrl: "icons/shield.png",
     title,
-    message,
+    message: data.url,
+    contextMessage: `Confidence: ${data.confidence}%`,
     priority: isHighConfidence ? 2 : 1,
   });
 }
@@ -53,8 +87,9 @@ async function classifyAndStore(tabId, url) {
 
     await chrome.storage.local.set({ [`tab_${tabId}`]: data });
     await updateBadge(tabId, data);
-    notifyIfThreat(tabId, data);
-  } catch {
+    await notifyIfThreat(tabId, data);
+  } catch (e) {
+    console.error("classifyAndStore failed", e);
     await chrome.action.setBadgeText({ tabId, text: "" });
   }
 }
@@ -71,4 +106,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.local.remove(`tab_${tabId}`);
+  try {
+    if (chrome.storage.session) {
+      chrome.storage.session.remove(`notified_${tabId}`);
+    }
+  } catch (e) {
+    console.error("session storage cleanup failed", e);
+  }
 });

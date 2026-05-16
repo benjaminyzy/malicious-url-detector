@@ -6,9 +6,18 @@ import tldextract
 
 from keywords import BRAND_KEYWORDS, PRIZE_KEYWORDS, SUSPICIOUS_KEYWORDS
 
-_BRAND_RE = re.compile("|".join(BRAND_KEYWORDS), re.IGNORECASE)
-_SUSPICIOUS_RE = re.compile("|".join(SUSPICIOUS_KEYWORDS), re.IGNORECASE)
-_PRIZE_RE = re.compile("|".join(PRIZE_KEYWORDS), re.IGNORECASE)
+_BRAND_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, BRAND_KEYWORDS)) + r")\b",
+    re.IGNORECASE,
+)
+_SUSPICIOUS_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, SUSPICIOUS_KEYWORDS)) + r")\b",
+    re.IGNORECASE,
+)
+_PRIZE_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, PRIZE_KEYWORDS)) + r")\b",
+    re.IGNORECASE,
+)
 
 _extractor = tldextract.TLDExtract(suffix_list_urls=())
 _BRAND_LOWER = {b.lower() for b in BRAND_KEYWORDS}
