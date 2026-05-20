@@ -1,10 +1,4 @@
-"""Majority-voting ensemble with high-precision rule overrides.
-
-Standard majority voting between 2 ML models + rule engine. Additionally,
-a curated set of high-precision rules can override the majority vote and
-force a MALICIOUS classification. This addresses cases where the ML models
-are overconfident on phishing patterns underrepresented in training data.
-"""
+# Majority-voting ensemble with a high-precision rule override that can force MALICIOUS.
 
 import os
 import pickle
@@ -21,8 +15,7 @@ from rule_engine import RULES, get_triggered_rules, rule_based_classify
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 PROBA_THRESHOLD = 0.5
 
-# Rules with near-zero false-positive rates. If any of these fire, the
-# ensemble forces a MALICIOUS classification regardless of ML votes.
+# Near-zero-FP rules. Any one firing forces MALICIOUS regardless of ML votes.
 HIGH_PRECISION_RULES = {
     "has_ip_address",
     "brand_in_subdomain_phishing",
@@ -91,24 +84,20 @@ def classify_url(url):
     votes_for_malicious = pred1 + pred2 + rule_pred
     majority_label = 1 if votes_for_malicious >= 2 else 0
 
-    # Check if any high-precision rule fired -> override the majority vote
+    # A high-precision rule fired: override the majority vote.
     high_precision_fired = bool(
         set(triggered_names) & HIGH_PRECISION_RULES
     )
     override_applied = high_precision_fired and majority_label == 0
     final_label = 1 if (majority_label == 1 or high_precision_fired) else 0
 
-    # rule_proba is a binary 0/1 cast to float, not a true probability.
-    # Averaging with the ML probabilities is a deliberate choice: the rule
-    # engine has no calibrated confidence, so we treat a triggered rule as
-    # 100% certain and an untriggered one as 0% in the average.
+    # rule_proba is binary 0/1: a triggered rule counts as 100% in the average.
     rule_proba = float(rule_pred)
     avg_proba_malicious = (proba1 + proba2 + rule_proba) / 3
 
     if final_label == 1:
         if override_applied:
-            # Override case: confidence reflects rule strength.
-            # Use the max of (rule-based floor, averaged probability).
+            # Floored at the override minimum.
             confidence = round(max(OVERRIDE_MIN_CONFIDENCE,
                                    avg_proba_malicious * 100), 1)
         else:
@@ -158,15 +147,15 @@ if __name__ == "__main__":
 
         override_tag = " [OVERRIDE]" if result["override_applied"] else ""
         print(f"URL: {result['url']}")
-        print(f"  Result    : {result['final_result']} "
+        print(f"  Result: {result['final_result']} "
               f"(confidence={result['confidence']}%){override_tag}")
-        print(f"  Majority  : {'MALICIOUS' if result['majority_label']==1 else 'BENIGN'} "
+        print(f"  Majority: {'MALICIOUS' if result['majority_label']==1 else 'BENIGN'} "
               f"(votes={result['votes_for_malicious']}/3)")
-        print(f"  {_model_names[0]:<15}: pred={result[f'{key1}_prediction']} "
+        print(f"  {_model_names[0]}: pred={result[f'{key1}_prediction']} "
               f"P(mal)={result[f'{key1}_proba']}")
-        print(f"  {_model_names[1]:<15}: pred={result[f'{key2}_prediction']} "
+        print(f"  {_model_names[1]}: pred={result[f'{key2}_prediction']} "
               f"P(mal)={result[f'{key2}_proba']}")
-        print(f"  Rule          : {result['rule_prediction']}")
+        print(f"  Rule: {result['rule_prediction']}")
         if result['triggered_rules']:
-            print(f"  Triggered     : {result['triggered_rules']}")
+            print(f"  Triggered: {result['triggered_rules']}")
         print()

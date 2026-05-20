@@ -81,8 +81,7 @@ async function checkUrl(url, forceRefresh = false) {
   if (!forceRefresh && currentTabId !== null) {
     const key = `tab_${currentTabId}`;
     const stored = await chrome.storage.local.get(key);
-    // Only use cached data if the cached URL matches the current URL.
-    // Without this check, intra-tab navigation shows stale results.
+    // Only use cached data if its URL matches; otherwise intra-tab nav shows stale results.
     if (stored[key] && stored[key].url === url) {
       renderResult(stored[key]);
       return;

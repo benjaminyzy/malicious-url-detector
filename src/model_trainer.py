@@ -21,10 +21,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 
-# has_https is excluded from the ML feature set: the path-rich benign source
-# (PhishStorm) ships scheme-less URLs, so a prepended scheme would make
-# has_https a data-source artifact rather than a genuine signal. The feature
-# is still produced by feature_extractor.py and used by the rule engine.
+# has_https excluded (PhishStorm URLs are scheme-less); still used by the rule engine.
 EXCLUDED_FEATURES = ("url", "label", "has_https")
 
 
@@ -42,11 +39,11 @@ def load_data():
 def evaluate(model, X_test, y_test):
     y_pred = model.predict(X_test)
     return {
-        "accuracy":  round(accuracy_score(y_test, y_pred), 4),
+        "accuracy": round(accuracy_score(y_test, y_pred), 4),
         "precision": round(precision_score(y_test, y_pred, zero_division=0), 4),
-        "recall":    round(recall_score(y_test, y_pred, zero_division=0), 4),
-        "f1":        round(f1_score(y_test, y_pred, zero_division=0), 4),
-        "mcc":       round(matthews_corrcoef(y_test, y_pred), 4),
+        "recall": round(recall_score(y_test, y_pred, zero_division=0), 4),
+        "f1": round(f1_score(y_test, y_pred, zero_division=0), 4),
+        "mcc": round(matthews_corrcoef(y_test, y_pred), 4),
     }, model.predict(X_test)
 
 
@@ -55,7 +52,7 @@ def save_confusion_matrix(y_test, y_pred, model_name):
     _, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.colorbar(im, ax=ax)
-    ax.set_title(f"Confusion Matrix — {model_name}", fontsize=13, fontweight="bold")
+    ax.set_title(f"Confusion Matrix - {model_name}", fontsize=13, fontweight="bold")
     ax.set_xlabel("Predicted Label", fontsize=11)
     ax.set_ylabel("Actual Label", fontsize=11)
     ax.set_xticks([0, 1])
@@ -164,7 +161,7 @@ if __name__ == "__main__":
         candidates = 1
         for v in param_grid.values():
             candidates *= len(v)
-        print(f"\nTuning {name} — {candidates} candidates × 5 folds = {candidates * 5} fits...")
+        print(f"\nTuning {name}: {candidates} candidates x 5 folds = {candidates * 5} fits...")
         gs = GridSearchCV(
             estimator, param_grid, cv=5, scoring="f1", n_jobs=-1, verbose=1
         )
@@ -187,7 +184,7 @@ if __name__ == "__main__":
     ranked = sorted(results.items(), key=lambda x: x[1]["metrics"]["f1"], reverse=True)
     top2 = ranked[:2]
 
-    print(f"\nTop 2 models by F1:")
+    print("\nTop 2 models by F1:")
     for i, (name, data) in enumerate(top2, 1):
         print(f"  #{i}: {name} - F1={data['metrics']['f1']:.4f} | "
               f"Best params: {data['best_params']}")

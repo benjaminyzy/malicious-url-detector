@@ -23,8 +23,7 @@ async function updateBadge(tabId, data) {
   }
 }
 
-// Simple Unicode-safe hash so notification IDs work for any URL
-// and so dedup keys don't collide between tabs.
+// Unicode-safe hash for stable per-URL notification IDs.
 function _shortHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -37,8 +36,7 @@ function _shortHash(str) {
 async function notifyIfThreat(tabId, data) {
   if (data.final_label !== 1) return;
 
-  // Persist dedup state to chrome.storage.session so it survives service-
-  // worker suspension. Falls back to in-memory if session storage unavailable.
+  // Dedup state in session storage survives service-worker suspension.
   const key = `notified_${tabId}`;
   let lastNotifiedUrl = null;
   try {

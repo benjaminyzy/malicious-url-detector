@@ -7,19 +7,18 @@ draw = ImageDraw.Draw(img)
 
 # Shield polygon points (normalised to 128x128)
 shield = [
-    (64, 8),    # top center
-    (112, 28),  # top right
-    (112, 68),  # right shoulder
-    (64, 120),  # bottom tip
-    (16, 68),   # left shoulder
-    (16, 28),   # top left
+    (64, 8),
+    (112, 28),
+    (112, 68),
+    (64, 120),
+    (16, 68),
+    (16, 28),
 ]
 
-# Fill and outline
-draw.polygon(shield, fill=(34, 197, 94, 255))       # green fill
-draw.polygon(shield, outline=(21, 128, 61, 255))     # darker green border, 1px
+draw.polygon(shield, fill=(34, 197, 94, 255))
+draw.polygon(shield, outline=(21, 128, 61, 255))
 
-# White checkmark  ✓  inside the shield
+# White checkmark inside the shield.
 check = [
     (40, 64),
     (56, 82),

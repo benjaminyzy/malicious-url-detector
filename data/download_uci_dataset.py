@@ -13,10 +13,10 @@ phiusiil = fetch_ucirepo(id=967)
 X = phiusiil.data.features
 y = phiusiil.data.targets
 
-print(f"  Features shape : {X.shape}")
-print(f"  Targets shape  : {y.shape}")
+print(f"  Features shape: {X.shape}")
+print(f"  Targets shape: {y.shape}")
 print(f"  Feature columns: {list(X.columns)}")
-print(f"  Target columns : {list(y.columns)}")
+print(f"  Target columns: {list(y.columns)}")
 
 # Identify URL and label columns
 url_col = [c for c in X.columns if c.lower() == "url"]
@@ -34,25 +34,23 @@ df = pd.DataFrame({
 unique_labels = df["label"].unique()
 print(f"  Raw label values: {sorted(unique_labels)}")
 
-# UCI PhiUSIIL uses 1=legitimate, -1=phishing (or 1/0 depending on version)
-# Normalise to: phishing=1, legitimate=0
+# PhiUSIIL uses 1=legit, -1 or 0=phish; normalise to phish=1, legit=0.
 if set(unique_labels) == {1, -1}:
     df["label"] = df["label"].map({1: 0, -1: 1})
 elif set(unique_labels) <= {0, 1}:
-    # PhiUSIIL's 0/1 is INVERTED vs ours: 1=legitimate, 0=phishing.
     df["label"] = df["label"].map({0: 1, 1: 0})
 else:
     # Fallback: treat the minority class as phishing
     minority = df["label"].value_counts().idxmin()
     df["label"] = (df["label"] == minority).astype(int)
-    print(f"  Warning: unexpected labels — treated {minority} as phishing (1)")
+    print(f"  Warning: unexpected labels, treated {minority} as phishing (1)")
 
 df = df.dropna(subset=["url"]).drop_duplicates(subset="url").reset_index(drop=True)
 
 df.to_csv(OUT_PATH, index=False)
 print(f"\nSaved {len(df)} rows to {OUT_PATH}")
-print(f"  Phishing (1)   : {(df['label'] == 1).sum()}")
-print(f"  Legitimate (0) : {(df['label'] == 0).sum()}")
+print(f"  Phishing (1): {(df['label'] == 1).sum()}")
+print(f"  Legitimate (0): {(df['label'] == 0).sum()}")
 
 print("\nSample URLs:")
 for _, row in df.sample(5, random_state=42).iterrows():

@@ -1,4 +1,4 @@
-"""FastAPI backend for the malicious URL detector."""
+# FastAPI backend for the malicious URL detector
 
 import json
 import os
@@ -88,8 +88,7 @@ def _validate_url(raw):
 
 
 def _split_components(result):
-    """Pull the two ML model preds and probas out of the result dict,
-    independent of which models were selected by the trainer."""
+    # Pull the two ML preds/probas regardless of which models were selected.
     pred_keys = sorted([k for k in result if k.endswith("_prediction")
                         and k != "rule_prediction"])
     proba_keys = sorted([k for k in result if k.endswith("_proba")])
@@ -168,8 +167,7 @@ def stats():
             .scalar()
             or 0
         )
-        # Compute tier breakdown server-side over the entire table so the
-        # dashboard metrics stay correct regardless of DB size
+        # Server-side tier breakdown so dashboard metrics scale with DB size.
         suspicious = (
             session.query(func.count(Classification.id))
             .filter(Classification.final_label == 1)

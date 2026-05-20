@@ -1,4 +1,4 @@
-"""Rule-based URL classifier. Third voter in the majority-voting ensemble."""
+# Rule-based URL classifier. Third voter in the majority-voting ensemble.
 
 import re
 
@@ -56,8 +56,13 @@ RULES = [
      lambda url, f: f["has_suspicious_words"] == 1 and f["has_https"] == 0,
      "URL contains credential-related keywords and does not use HTTPS"),
     ("url_too_long",
-     lambda url, f: f["url_length"] > 200,
-     "URL length exceeds 200 characters"),
+     lambda url, f: f["url_length"] > 200 and (
+         f.get("has_suspicious_words", 0) == 1
+         or f.get("has_ip_address", 0) == 1
+         or f.get("is_suspicious_tld", 0) == 1
+         or f.get("num_subdomains", 0) > 3
+     ),
+     "URL is unusually long and contains another risk signal"),
     ("has_at_symbol",
      lambda url, f: f["num_at_symbols"] > 0,
      "URL contains @ symbol (credential-injection technique)"),

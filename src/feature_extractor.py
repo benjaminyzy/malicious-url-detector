@@ -1,4 +1,4 @@
-"""URL feature extraction. Lexical and statistical features only (no network calls)."""
+# URL feature extraction. Lexical and statistical features only, no network calls.
 
 import math
 import os
@@ -59,9 +59,7 @@ def extract_features(url):
     digits = sum(1 for c in url if c.isdigit())
     digit_to_letter_ratio = digits / letters if letters else 0.0
 
-    # Brand-in-subdomain phishing signature:
-    # paypal.attacker.com -> brand in subdomain, attacker is registered (PHISH)
-    # paypal.com -> brand IS the registered domain (LEGIT)
+    # Brand in subdomain but not registered domain (paypal.attacker.com vs paypal.com).
     brand_in_sub = bool(_BRAND_RE.search(subdomain))
     brand_in_reg = bool(_BRAND_RE.search(registered_domain))
     brand_in_subdomain_not_domain = int(brand_in_sub and not brand_in_reg)

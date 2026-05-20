@@ -1,4 +1,4 @@
-"""Centralized keyword lists for feature extraction and rule engine."""
+# Centralised keyword lists used by the feature extractor and rule engine.
 
 SUSPICIOUS_KEYWORDS = [
     "login", "verify", "secure", "account", "update",

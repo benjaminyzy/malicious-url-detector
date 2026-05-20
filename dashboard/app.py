@@ -1,4 +1,4 @@
-"""Streamlit dashboard for the malicious URL detector."""
+# Streamlit dashboard for the malicious URL detector
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -187,8 +187,7 @@ st.subheader("Recent Threats")
 threats = stats["recent_threats"] if stats else []
 if threats:
     for t in threats:
-        # Recent threats always have final_label=1 (filtered by backend);
-        # tier is MALICIOUS or SUSPICIOUS based on confidence
+        # final_label=1 here (backend filters); tier depends on confidence.
         tier = classify_tier(1, t["confidence"])
         accent, _, bg = tier_colors(tier)
         st.markdown(
@@ -357,8 +356,7 @@ if "last_result" in st.session_state:
 
     if st.button("Clear Result"):
         del st.session_state["last_result"]
-        # Bump the counter so the text input gets a fresh widget key,
-        # which forces Streamlit to reset it to empty
+        # New widget key forces Streamlit to reset the text input.
         st.session_state["input_counter"] += 1
         st.session_state.pop("last_submitted_url", None)
         st.session_state.pop("check_error", None)
